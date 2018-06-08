@@ -1,2 +1,2 @@
 # encurtadorurl
-App in golang to create sort url
+Aplicativo em Golang para criar Url curtas
