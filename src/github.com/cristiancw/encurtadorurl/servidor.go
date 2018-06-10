@@ -72,49 +72,37 @@ func Encurtador(w http.ResponseWriter, r *http.Request) {
 
 // Visualizar função que vai receber a requisição para retornar o status da url encurtada.
 func Visualizar(w http.ResponseWriter, r *http.Request) {
-	caminho := strings.Split(r.URL.Path, "/")
-	id := caminho[len(caminho)-1]
-	if urlO := url.Buscar(id); urlO != nil {
+	buscarURLeExecutarFuncao(w, r, func(urlO *url.URL) {
 		json, err := json.Marshal(urlO.Stats())
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 
 		responderComJSON(w, string(json))
-	} else {
-		http.NotFound(w, r)
-	}
+	})
 }
 
 // Redirecionador função que vai receber a requisição a Url reduzida e redirecionar para a Url original.
 func Redirecionador(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Redirecionador 1")
-	caminho := strings.Split(r.URL.Path, "/")
-	id := caminho[len(caminho)-1]
-	if urlO := url.Buscar(id); urlO != nil {
+	buscarURLeExecutarFuncao(w, r, func(urlO *url.URL) {
 		http.Redirect(w, r, urlO.Destino, http.StatusMovedPermanently)
 		// Poderia ser assim, porém, com o passar do tempo mais metricas vão aparecer
 		// como não queremos tornar lento um processo por coletar suas metricas
 		// trabalhamos com uma goroutine
 		// url.RegistrarClick(id)
 
-		stats <- id
-	} else {
-		http.NotFound(w, r)
-	}
+		stats <- urlO.ID
+	})
 }
 
 // ServeHTTP segunda maneira de fazer um handler para o redirecionador.
 func (red *RedirecionadorStruct) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Redirecionador 2")
-	caminho := strings.Split(r.URL.Path, "/")
-	id := caminho[len(caminho)-1]
-	if urlO := url.Buscar(id); urlO != nil {
+	buscarURLeExecutarFuncao(w, r, func(urlO *url.URL) {
 		http.Redirect(w, r, urlO.Destino, http.StatusMovedPermanently)
-		red.stats2 <- id
-	} else {
-		http.NotFound(w, r)
-	}
+		red.stats2 <- urlO.ID
+	})
 }
 
 func responderCom(w http.ResponseWriter, status int, headers Headers) {
@@ -139,5 +127,15 @@ func registrarEstatisticas(ids <-chan string) {
 	for id := range ids {
 		url.RegistrarClick(id)
 		fmt.Printf("Click registrado com sucesso para o ID: %v\n", id)
+	}
+}
+
+func buscarURLeExecutarFuncao(w http.ResponseWriter, r *http.Request, executar func(*url.URL)) {
+	caminho := strings.Split(r.URL.Path, "/")
+	id := caminho[len(caminho)-1]
+	if urlO := url.Buscar(id); urlO != nil {
+		executar(urlO)
+	} else {
+		http.NotFound(w, r)
 	}
 }
