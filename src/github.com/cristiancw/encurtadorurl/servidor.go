@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,9 +12,10 @@ import (
 )
 
 var (
-	porta   int
-	urlBase string
-	stats   chan string
+	porta     *int
+	logLigado *bool
+	urlBase   string
+	stats     chan string
 )
 
 // Headers para definir os parametros do cabeçalho.
@@ -34,12 +36,15 @@ func main() {
 	http.HandleFunc("/r/", Redirecionador)
 	http.Handle("/r2/", &RedirecionadorStruct{stats})
 
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", porta), nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *porta), nil))
 }
 
 func init() {
-	porta = 8888
-	urlBase = fmt.Sprintf("http://localhost:%d", porta)
+	porta = flag.Int("p", 8888, "Número porta")
+	logLigado = flag.Bool("l", true, "Logs ligado/desligado")
+	flag.Parse()
+	urlBase = fmt.Sprintf("http://localhost:%d", *porta)
+	logar("Iniciando o servidor na porta: %d...", *porta)
 }
 
 // Encurtador função que vai receber a requisição com a Url atual e criar uma nova reduzida.
@@ -68,6 +73,7 @@ func Encurtador(w http.ResponseWriter, r *http.Request) {
 		"Location": urlCurta,
 		"Link":     fmt.Sprintf("<%s/api/stats/%s>; rel=\"stats\"", urlBase, url.ID),
 	})
+	logar("URL '%s', foi encurtada para: '%s'", url.Destino, urlCurta)
 }
 
 // Visualizar função que vai receber a requisição para retornar o status da url encurtada.
@@ -79,12 +85,12 @@ func Visualizar(w http.ResponseWriter, r *http.Request) {
 		}
 
 		responderComJSON(w, string(json))
+		logar("Estatisticas processadas com sucesso: '%s'", string(json))
 	})
 }
 
 // Redirecionador função que vai receber a requisição a Url reduzida e redirecionar para a Url original.
 func Redirecionador(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Redirecionador 1")
 	buscarURLeExecutarFuncao(w, r, func(urlO *url.URL) {
 		http.Redirect(w, r, urlO.Destino, http.StatusMovedPermanently)
 		// Poderia ser assim, porém, com o passar do tempo mais metricas vão aparecer
@@ -93,15 +99,16 @@ func Redirecionador(w http.ResponseWriter, r *http.Request) {
 		// url.RegistrarClick(id)
 
 		stats <- urlO.ID
+		logar("Redirecionador 1 processadas com sucesso: '%s'", urlO.ID)
 	})
 }
 
 // ServeHTTP segunda maneira de fazer um handler para o redirecionador.
 func (red *RedirecionadorStruct) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Redirecionador 2")
 	buscarURLeExecutarFuncao(w, r, func(urlO *url.URL) {
 		http.Redirect(w, r, urlO.Destino, http.StatusMovedPermanently)
 		red.stats2 <- urlO.ID
+		logar("Redirecionador 2 processadas com sucesso: '%s'", urlO.ID)
 	})
 }
 
@@ -126,7 +133,7 @@ func extrairURL(r *http.Request) string {
 func registrarEstatisticas(ids <-chan string) {
 	for id := range ids {
 		url.RegistrarClick(id)
-		fmt.Printf("Click registrado com sucesso para o ID: %v\n", id)
+		logar("Click registrado com sucesso para o ID: %v\n", id)
 	}
 }
 
@@ -137,5 +144,11 @@ func buscarURLeExecutarFuncao(w http.ResponseWriter, r *http.Request, executar f
 		executar(urlO)
 	} else {
 		http.NotFound(w, r)
+	}
+}
+
+func logar(formato string, valores ...interface{}) {
+	if *logLigado {
+		log.Printf(fmt.Sprintf("%s\n", formato), valores...)
 	}
 }
