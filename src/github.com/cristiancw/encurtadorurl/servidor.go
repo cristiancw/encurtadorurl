@@ -19,6 +19,11 @@ var (
 // Headers para definir os parametros do cabeçalho.
 type Headers map[string]string
 
+// RedirecionadorStruct outra maneira de utilizar handlers.
+type RedirecionadorStruct struct {
+	stats2 chan string
+}
+
 func main() {
 	stats = make(chan string)
 	defer close(stats)
@@ -27,6 +32,7 @@ func main() {
 	http.HandleFunc("/api/encurtar", Encurtador)
 	http.HandleFunc("/api/stats/", Visualizar)
 	http.HandleFunc("/r/", Redirecionador)
+	http.Handle("/r2/", &RedirecionadorStruct{stats})
 
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", porta), nil))
 }
@@ -82,6 +88,7 @@ func Visualizar(w http.ResponseWriter, r *http.Request) {
 
 // Redirecionador função que vai receber a requisição a Url reduzida e redirecionar para a Url original.
 func Redirecionador(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Redirecionador 1")
 	caminho := strings.Split(r.URL.Path, "/")
 	id := caminho[len(caminho)-1]
 	if urlO := url.Buscar(id); urlO != nil {
@@ -92,6 +99,19 @@ func Redirecionador(w http.ResponseWriter, r *http.Request) {
 		// url.RegistrarClick(id)
 
 		stats <- id
+	} else {
+		http.NotFound(w, r)
+	}
+}
+
+// ServeHTTP segunda maneira de fazer um handler para o redirecionador.
+func (red *RedirecionadorStruct) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Redirecionador 2")
+	caminho := strings.Split(r.URL.Path, "/")
+	id := caminho[len(caminho)-1]
+	if urlO := url.Buscar(id); urlO != nil {
+		http.Redirect(w, r, urlO.Destino, http.StatusMovedPermanently)
+		red.stats2 <- id
 	} else {
 		http.NotFound(w, r)
 	}
